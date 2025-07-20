@@ -1,379 +1,190 @@
-// server.js - Dreams Bar Backend
-// This server handles API requests for inventory, room, client, and booking management, and connects to a MariaDB database.
+// server.js - Node.js Express Backend for Dreams Bar & Guesthouse
+// This version uses in-memory data for quick deployment and demonstration purposes.
+// Data will reset when the server restarts.
 
 const express = require('express');
-const mysql = require('mysql2/promise'); // Using the promise-based API for async/await
-const cors = require('cors');
-require('dotenv').config(); // Load environment variables from .env file
-
+const bodyParser = require('body-parser');
+const cors = require('cors'); // Required for cross-origin requests from frontend
 const app = express();
-const port = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5000; // Use environment port for deployment, default to 5000
 
-// Middleware
-app.use(cors()); // Enable CORS for all routes
-app.use(express.json()); // Enable parsing of JSON request bodies
+// Middleware setup
+app.use(cors()); // Enable CORS for all origins (important for frontend connection)
+app.use(bodyParser.json()); // Parse incoming JSON requests
 
-// Database connection pool
-const pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: process.env.DB_PORT || 3306,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+// --- TEMPORARY IN-MEMORY DATA STORAGE ---
+// This data will be lost when the server restarts (e.g., on Render's free tier after inactivity).
+// For persistent data, you would integrate a database like MariaDB, PostgreSQL, or MongoDB.
+
+let inventoryItems = [
+    { id: 1, name: 'Coca Cola 500ml', category_id: 1, quantity: 100, unit: 'bottles', cost_price: 1500.00, selling_price: 2000.00, reorder_level: 20 },
+    { id: 2, name: 'Nile Special Beer', category_id: 1, quantity: 50, unit: 'bottles', cost_price: 3000.00, selling_price: 4000.00, reorder_level: 10 },
+    { id: 3, name: 'Crisps (Salted)', category_id: 2, quantity: 75, unit: 'packs', cost_price: 800.00, selling_price: 1200.00, reorder_level: 15 }
+];
+
+let rooms = [
+    { id: 1, room_number: '101', type: 'Standard', price_per_night: 50000.00, status: 'Available' },
+    { id: 2, room_number: '102', type: 'Deluxe', price_per_night: 80000.00, status: 'Occupied' },
+    { id: 3, room_number: '201', type: 'Suite', price_per_night: 120000.00, status: 'Available' }
+];
+
+let clients = [
+    // Clients are needed for the bookings dropdown in the frontend
+    { id: 1, name: 'John Doe', contact_info: 'john@example.com, 0771234567' },
+    { id: 2, name: 'Jane Smith', contact_info: 'jane@example.com, 0772345678' }
+];
+
+let bookings = [
+    // Sample bookings data
+    { id: 1, room_id: 1, client_id: 1, check_in_date: '2025-08-01', check_out_date: '2025-08-05', total_price: 200000.00, status: 'Confirmed' },
+    { id: 2, room_id: 2, client_id: 2, check_in_date: '2025-07-20', check_out_date: '2025-07-22', total_price: 160000.00, status: 'Completed' }
+];
+
+let categories = [
+    // Categories for inventory dropdown
+    { id: 1, name: 'Beverages' },
+    { id: 2, name: 'Snacks' },
+    { id: 3, name: 'Food' }
+];
+
+// Simple ID counters for new items
+let nextInventoryId = Math.max(...inventoryItems.map(item => item.id)) + 1;
+let nextRoomId = Math.max(...rooms.map(room => room.id)) + 1;
+let nextClientId = Math.max(...clients.map(client => client.id)) + 1;
+let nextBookingId = Math.max(...bookings.map(booking => booking.id)) + 1;
+
+// Helper function to find an item by ID in an array
+const getById = (arr, id) => arr.find(item => item.id === parseInt(id));
+
+// --- API Routes ---
+
+// Root endpoint for health check
+app.get('/', (req, res) => {
+    res.send('Dreams Bar Backend API is running!');
 });
 
-// Test database connection
-pool.getConnection()
-    .then(connection => {
-        console.log('Successfully connected to MariaDB!');
-        connection.release(); // Release the connection back to the pool
-    })
-    .catch(err => {
-        console.error('Error connecting to MariaDB:', err.message);
-        process.exit(1); // Exit the process if database connection fails
+// Inventory Management Endpoints
+app.get('/api/inventory', (req, res) => {
+    res.json(inventoryItems);
+});
+
+app.post('/api/inventory', (req, res) => {
+    const newItem = { id: nextInventoryId++, ...req.body };
+    inventoryItems.push(newItem);
+    res.status(201).json(newItem);
+});
+
+app.put('/api/inventory/:id', (req, res) => {
+    const { id } = req.params;
+    const index = inventoryItems.findIndex(item => item.id === parseInt(id));
+    if (index !== -1) {
+        inventoryItems[index] = { ...inventoryItems[index], ...req.body, id: parseInt(id) };
+        res.json(inventoryItems[index]);
+    } else {
+        res.status(404).json({ message: 'Item not found' });
+    }
+});
+
+app.delete('/api/inventory/:id', (req, res) => {
+    const { id } = req.params;
+    const initialLength = inventoryItems.length;
+    inventoryItems = inventoryItems.filter(item => item.id !== parseInt(id));
+    if (inventoryItems.length < initialLength) {
+        res.status(204).send(); // No Content
+    } else {
+        res.status(404).json({ message: 'Item not found' });
+    }
+});
+
+// Room Management Endpoints
+app.get('/api/rooms', (req, res) => {
+    res.json(rooms);
+});
+
+app.post('/api/rooms', (req, res) => {
+    const newRoom = { id: nextRoomId++, ...req.body };
+    rooms.push(newRoom);
+    res.status(201).json(newRoom);
+});
+
+app.put('/api/rooms/:id', (req, res) => {
+    const { id } = req.params;
+    const index = rooms.findIndex(room => room.id === parseInt(id));
+    if (index !== -1) {
+        rooms[index] = { ...rooms[index], ...req.body, id: parseInt(id) };
+        res.json(rooms[index]);
+    } else {
+        res.status(404).json({ message: 'Room not found' });
+    }
+});
+
+app.delete('/api/rooms/:id', (req, res) => {
+    const { id } = req.params;
+    const initialLength = rooms.length;
+    rooms = rooms.filter(room => room.id !== parseInt(id));
+    if (rooms.length < initialLength) {
+        res.status(204).send();
+    } else {
+        res.status(404).json({ message: 'Room not found' });
+    }
+});
+
+// Client Management Endpoints (for bookings dropdown)
+app.get('/api/clients', (req, res) => {
+    res.json(clients);
+});
+
+// Bookings Management Endpoints
+// This endpoint joins booking data with room and client details for display
+app.get('/api/bookings/rooms', (req, res) => {
+    const detailedBookings = bookings.map(booking => {
+        const room = getById(rooms, booking.room_id);
+        const client = getById(clients, booking.client_id);
+        return {
+            ...booking,
+            room_number: room ? room.room_number : 'N/A',
+            room_type: room ? room.type : 'N/A',
+            client_name: client ? client.name : 'N/A',
+            client_contact_info: client ? client.contact_info : 'N/A'
+        };
     });
-
-// Helper function to convert numeric strings from DB to actual numbers
-// MySQL/MariaDB's DECIMAL type often returns as string in Node.js drivers.
-const parseNumericFields = (item) => {
-    if (!item) return item;
-
-    const newItem = { ...item };
-    if (typeof newItem.quantity === 'string') {
-        newItem.quantity = parseFloat(newItem.quantity);
-    }
-    if (typeof newItem.cost_price === 'string') {
-        newItem.cost_price = parseFloat(newItem.cost_price);
-    }
-    if (typeof newItem.selling_price === 'string') {
-        newItem.selling_price = parseFloat(newItem.selling_price);
-    }
-    if (typeof newItem.reorder_level === 'string') {
-        newItem.reorder_level = parseFloat(newItem.reorder_level);
-    }
-    // For rooms:
-    if (typeof newItem.price_per_night === 'string') {
-        newItem.price_per_night = parseFloat(newItem.price_per_night);
-    }
-    // For bookings:
-    if (typeof newItem.total_price === 'string') {
-        newItem.total_price = parseFloat(newItem.total_price);
-    }
-    return newItem;
-};
-
-
-// --- API Endpoints for Inventory ---
-
-// GET all inventory items
-app.get('/api/inventory', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM inventory');
-        // Map over rows to ensure numeric fields are actual numbers
-        const inventoryItems = rows.map(parseNumericFields);
-        res.json(inventoryItems);
-    } catch (err) {
-        console.error('Error fetching inventory:', err);
-        res.status(500).json({ message: 'Failed to retrieve inventory items.' });
-    }
+    res.json(detailedBookings);
 });
 
-// GET a single inventory item by ID
-app.get('/api/inventory/:id', async (req, res) => {
+app.post('/api/bookings/rooms', (req, res) => {
+    const newBooking = { id: nextBookingId++, ...req.body };
+    bookings.push(newBooking);
+    res.status(201).json(newBooking);
+});
+
+app.put('/api/bookings/rooms/:id', (req, res) => {
     const { id } = req.params;
-    try {
-        const [rows] = await pool.query('SELECT * FROM inventory WHERE id = ?', [id]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: 'Inventory item not found.' });
-        }
-        // Parse numeric fields for the single item
-        res.json(parseNumericFields(rows[0]));
-    } catch (err) {
-        console.error(`Error fetching inventory item with ID ${id}:`, err);
-        res.status(500).json({ message: 'Failed to retrieve inventory item.' });
+    const index = bookings.findIndex(booking => booking.id === parseInt(id));
+    if (index !== -1) {
+        bookings[index] = { ...bookings[index], ...req.body, id: parseInt(id) };
+        res.json(bookings[index]);
+    } else {
+        res.status(404).json({ message: 'Booking not found' });
     }
 });
 
-// POST a new inventory item
-app.post('/api/inventory', async (req, res) => {
-    const { name, category_id, quantity, unit, cost_price, selling_price, reorder_level } = req.body;
-    // Basic validation
-    if (!name || !category_id || quantity === undefined || !unit || cost_price === undefined || selling_price === undefined || reorder_level === undefined) {
-        return res.status(400).json({ message: 'All fields are required.' });
-    }
-
-    try {
-        const [result] = await pool.query(
-            'INSERT INTO inventory (name, category_id, quantity, unit, cost_price, selling_price, reorder_level) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [name, category_id, quantity, unit, cost_price, selling_price, reorder_level]
-        );
-        res.status(201).json({ message: 'Inventory item added successfully!', id: result.insertId });
-    } catch (err) {
-        console.error('Error adding inventory item:', err);
-        res.status(500).json({ message: 'Failed to add inventory item.' });
-    }
-});
-
-// PUT (Update) an inventory item
-app.put('/api/inventory/:id', async (req, res) => {
+app.delete('/api/bookings/rooms/:id', (req, res) => {
     const { id } = req.params;
-    const { name, category_id, quantity, unit, cost_price, selling_price, reorder_level } = req.body;
-
-    // Basic validation
-    if (!name || !category_id || quantity === undefined || !unit || cost_price === undefined || selling_price === undefined || reorder_level === undefined) {
-        return res.status(400).json({ message: 'All fields are required for update.' });
-    }
-
-    try {
-        const [result] = await pool.query(
-            'UPDATE inventory SET name = ?, category_id = ?, quantity = ?, unit = ?, cost_price = ?, selling_price = ?, reorder_level = ? WHERE id = ?',
-            [name, category_id, quantity, unit, cost_price, selling_price, reorder_level, id]
-        );
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Inventory item not found.' });
-        }
-        res.json({ message: 'Inventory item updated successfully!' });
-    } catch (err) {
-        console.error(`Error updating inventory item with ID ${id}:`, err);
-        res.status(500).json({ message: 'Failed to update inventory item.' });
+    const initialLength = bookings.length;
+    bookings = bookings.filter(booking => booking.id !== parseInt(id));
+    if (bookings.length < initialLength) {
+        res.status(204).send();
+    } else {
+        res.status(404).json({ message: 'Booking not found' });
     }
 });
 
-// DELETE an inventory item
-app.delete('/api/inventory/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const [result] = await pool.query('DELETE FROM inventory WHERE id = ?', [id]);
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Inventory item not found.' });
-        }
-        res.json({ message: 'Inventory item deleted successfully!' });
-    } catch (err) {
-        console.error(`Error deleting inventory item with ID ${id}:`, err);
-        res.status(500).json({ message: 'Failed to delete inventory item.' });
-    }
+// Categories Endpoints (for inventory dropdown)
+app.get('/api/categories', (req, res) => {
+    res.json(categories);
 });
-
-// --- API Endpoint for Categories ---
-app.get('/api/categories', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT id, name FROM categories');
-        res.json(rows);
-    } catch (err) {
-        console.error('Error fetching categories:', err);
-        res.status(500).json({ message: 'Failed to retrieve categories.' });
-    }
-});
-
-// --- API Endpoints for Rooms ---
-
-// GET all rooms
-app.get('/api/rooms', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM rooms');
-        const rooms = rows.map(parseNumericFields); // Ensure price_per_night is parsed
-        res.json(rooms);
-    } catch (err) {
-        console.error('Error fetching rooms:', err);
-        res.status(500).json({ message: 'Failed to retrieve rooms.' });
-    }
-});
-
-// POST a new room
-app.post('/api/rooms', async (req, res) => {
-    const { room_number, type, price_per_night, status } = req.body;
-    if (!room_number || !type || price_per_night === undefined || !status) {
-        return res.status(400).json({ message: 'All fields are required for a new room.' });
-    }
-    try {
-        const [result] = await pool.query(
-            'INSERT INTO rooms (room_number, type, price_per_night, status) VALUES (?, ?, ?, ?)',
-            [room_number, type, price_per_night, status]
-        );
-        res.status(201).json({ message: 'Room added successfully!', id: result.insertId });
-    } catch (err) {
-        console.error('Error adding room:', err);
-        res.status(500).json({ message: 'Failed to add room.' });
-    }
-});
-
-// PUT (Update) a room
-app.put('/api/rooms/:id', async (req, res) => {
-    const { id } = req.params;
-    const { room_number, type, price_per_night, status } = req.body;
-    if (!room_number || !type || price_per_night === undefined || !status) {
-        return res.status(400).json({ message: 'All fields are required for room update.' });
-    }
-    try {
-        const [result] = await pool.query(
-            'UPDATE rooms SET room_number = ?, type = ?, price_per_night = ?, status = ? WHERE id = ?',
-            [room_number, type, price_per_night, status, id]
-        );
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Room not found.' });
-        }
-        res.json({ message: 'Room updated successfully!' });
-    } catch (err) {
-        console.error(`Error updating room with ID ${id}:`, err);
-        res.status(500).json({ message: 'Failed to update room.' });
-    }
-});
-
-// DELETE a room
-app.delete('/api/rooms/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const [result] = await pool.query('DELETE FROM rooms WHERE id = ?', [id]);
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Room not found.' });
-        }
-        res.json({ message: 'Room deleted successfully!' });
-    } catch (err) {
-        console.error(`Error deleting room with ID ${id}:`, err);
-        res.status(500).json({ message: 'Failed to delete room.' });
-    }
-});
-
-// --- NEW API Endpoints for Clients ---
-
-// GET all clients
-app.get('/api/clients', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM clients');
-        res.json(rows);
-    } catch (err) {
-        console.error('Error fetching clients:', err);
-        res.status(500).json({ message: 'Failed to retrieve clients.' });
-    }
-});
-
-// POST a new client
-app.post('/api/clients', async (req, res) => {
-    const { name, contact_info } = req.body;
-    if (!name || !contact_info) {
-        return res.status(400).json({ message: 'Name and contact info are required for a new client.' });
-    }
-    try {
-        const [result] = await pool.query(
-            'INSERT INTO clients (name, contact_info) VALUES (?, ?)',
-            [name, contact_info]
-        );
-        res.status(201).json({ message: 'Client added successfully!', id: result.insertId });
-    } catch (err) {
-        console.error('Error adding client:', err);
-        res.status(500).json({ message: 'Failed to add client.' });
-    }
-});
-
-// --- NEW API Endpoints for Room Bookings ---
-
-// GET all room bookings (with room and client details)
-app.get('/api/bookings/rooms', async (req, res) => {
-    try {
-        const [rows] = await pool.query(`
-            SELECT
-                rb.id,
-                rb.check_in_date,
-                rb.check_out_date,
-                rb.total_price,
-                rb.status,
-                r.room_number,
-                r.type AS room_type,
-                c.name AS client_name,
-                c.contact_info AS client_contact_info
-            FROM room_bookings rb
-            JOIN rooms r ON rb.room_id = r.id
-            JOIN clients c ON rb.client_id = c.id
-        `);
-        const bookings = rows.map(parseNumericFields); // Ensure total_price is parsed
-        res.json(bookings);
-    } catch (err) {
-        console.error('Error fetching room bookings:', err);
-        res.status(500).json({ message: 'Failed to retrieve room bookings.' });
-    }
-});
-
-// POST a new room booking
-app.post('/api/bookings/rooms', async (req, res) => {
-    const { room_id, client_id, check_in_date, check_out_date, total_price, status } = req.body;
-    if (!room_id || !client_id || !check_in_date || !check_out_date || total_price === undefined || !status) {
-        return res.status(400).json({ message: 'All booking fields are required.' });
-    }
-    try {
-        const [result] = await pool.query(
-            'INSERT INTO room_bookings (room_id, client_id, check_in_date, check_out_date, total_price, status) VALUES (?, ?, ?, ?, ?, ?)',
-            [room_id, client_id, check_in_date, check_out_date, total_price, status]
-        );
-        res.status(201).json({ message: 'Room booking added successfully!', id: result.insertId });
-    } catch (err) {
-        console.error('Error adding room booking:', err);
-        res.status(500).json({ message: 'Failed to add room booking.' });
-    }
-});
-
-// PUT (Update) a room booking
-app.put('/api/bookings/rooms/:id', async (req, res) => {
-    const { id } = req.params;
-    const { room_id, client_id, check_in_date, check_out_date, total_price, status } = req.body;
-    if (!room_id || !client_id || !check_in_date || !check_out_date || total_price === undefined || !status) {
-        return res.status(400).json({ message: 'All booking fields are required for update.' });
-    }
-    try {
-        const [result] = await pool.query(
-            'UPDATE room_bookings SET room_id = ?, client_id = ?, check_in_date = ?, check_out_date = ?, total_price = ?, status = ? WHERE id = ?',
-            [room_id, client_id, check_in_date, check_out_date, total_price, status, id]
-        );
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Room booking not found.' });
-        }
-        res.json({ message: 'Room booking updated successfully!' });
-    } catch (err) {
-        console.error(`Error updating room booking with ID ${id}:`, err);
-        res.status(500).json({ message: 'Failed to update room booking.' });
-    }
-});
-
-// DELETE a room booking
-app.delete('/api/bookings/rooms/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const [result] = await pool.query('DELETE FROM room_bookings WHERE id = ?', [id]);
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Room booking not found.' });
-        }
-        res.json({ message: 'Room booking deleted successfully!' });
-    } catch (err) {
-        console.error(`Error deleting room booking with ID ${id}:`, err);
-        res.status(500).json({ message: 'Failed to delete room booking.' });
-    }
-});
-
 
 // Start the server
-app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
-    console.log('API Endpoints for Inventory:');
-    console.log('  GET /api/inventory - Get all inventory items');
-    console.log('  GET /api/inventory/:id - Get a single inventory item');
-    console.log('  POST /api/inventory - Add a new inventory item');
-    console.log('  PUT /api/inventory/:id - Update an inventory item');
-    console.log('  DELETE /api/inventory/:id - Delete an inventory item');
-    console.log('API Endpoints for Categories:');
-    console.log('  GET /api/categories - Get all categories');
-    console.log('API Endpoints for Rooms:');
-    console.log('  GET /api/rooms - Get all rooms');
-    console.log('  POST /api/rooms - Add a new room');
-    console.log('  PUT /api/rooms/:id - Update a room');
-    console.log('  DELETE /api/rooms/:id - Delete a room');
-    console.log('API Endpoints for Clients:'); // New console log for clients
-    console.log('  GET /api/clients - Get all clients');
-    console.log('  POST /api/clients - Add a new client');
-    console.log('API Endpoints for Room Bookings:'); // New console log for bookings
-    console.log('  GET /api/bookings/rooms - Get all room bookings');
-    console.log('  POST /api/bookings/rooms - Add a new room booking');
-    console.log('  PUT /api/bookings/rooms/:id - Update a room booking');
-    console.log('  DELETE /api/bookings/rooms/:id - Delete a room booking');
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
