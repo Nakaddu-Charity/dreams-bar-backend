@@ -14,7 +14,8 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: {
         rejectUnauthorized: false // Required for Render to Supabase connection
-    }
+    },
+    family: 4 // <--- ADDED THIS LINE TO FORCE IPV4 CONNECTION
 });
 
 // Test database connection on server start
@@ -235,7 +236,7 @@ app.delete('/api/bookings/rooms/:id', async (req, res) => {
             res.status(404).json({ message: 'Booking not found' });
         }
     } catch (err) {
-            console.error('Error deleting booking:', err);
+        console.error('Error deleting booking:', err);
         res.status(500).json({ message: 'Failed to delete booking.' });
     }
 });
