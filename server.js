@@ -1,5 +1,4 @@
 // server.js - PostgreSQL Backend for Dreams Bar & Guesthouse
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -8,8 +7,19 @@ const { Pool } = require('pg'); // Import Pool from pg
 const app = express();
 const PORT = process.env.PORT || 5000; // Railway usually sets PORT to 8080
 
+// --- Configure CORS to allow your Vercel frontend ---
+const corsOptions = {
+    origin: 'https://dreams-bar-frontend.vercel.app', // Explicitly allow your Vercel frontend domain
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // Allowed HTTP methods
+    credentials: true, // Allow cookies to be sent
+    optionsSuccessStatus: 204 // For preflight requests
+};
+app.use(cors(corsOptions)); // Apply CORS middleware with options
+
+// Middleware for parsing JSON request bodies
+app.use(bodyParser.json());
+
 // --- PostgreSQL Database Connection ---
-// The DATABASE_URL environment variable will now be the Session Pooler URL
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: {
@@ -35,10 +45,6 @@ pool.connect((err, client, release) => {
         console.log('Connected to PostgreSQL database:', result.rows[0].now);
     });
 });
-
-// Middleware
-app.use(cors()); // Ensure CORS is enabled for frontend
-app.use(bodyParser.json());
 
 // --- API Routes (using PostgreSQL) ---
 
@@ -222,41 +228,41 @@ app.put('/api/bookings/rooms/:id', async (req, res) => {
         if (result.rows.length > 0) {
             res.json(result.rows[0]);
         } else {
-                res.status(404).json({ message: 'Booking not found' });
-            }
-        } catch (err) {
-            console.error('Error updating booking:', err);
-            res.status(500).json({ message: 'Failed to update booking.' });
+            res.status(404).json({ message: 'Booking not found' });
         }
-    });
+    } catch (err) {
+        console.error('Error updating booking:', err);
+        res.status(500).json({ message: 'Failed to update booking.' });
+    }
+});
 
-    app.delete('/api/bookings/rooms/:id', async (req, res) => {
-        const { id } = req.params;
-        try {
-            const result = await pool.query('DELETE FROM bookings WHERE id = $1 RETURNING id', [id]);
-            if (result.rows.length > 0) {
-                res.status(204).send();
-            } else {
-                res.status(404).json({ message: 'Booking not found' });
-            }
-        } catch (err) {
-            console.error('Error deleting booking:', err);
-            res.status(500).json({ message: 'Failed to delete booking.' });
+app.delete('/api/bookings/rooms/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await pool.query('DELETE FROM bookings WHERE id = $1 RETURNING id', [id]);
+        if (result.rows.length > 0) {
+            res.status(204).send();
+        } else {
+            res.status(404).json({ message: 'Item not found' });
         }
-    });
+    } catch (err) {
+        console.error('Error deleting booking:', err);
+        res.status(500).json({ message: 'Failed to delete booking.' });
+    }
+});
 
-    // Categories Routes (for inventory dropdown)
-    app.get('/api/categories', async (req, res) => {
-        try {
-            const result = await pool.query('SELECT * FROM categories ORDER BY id ASC');
-            res.json(result.rows);
-        } catch (err) {
-            console.error('Error fetching categories:', err);
-            res.status(500).json({ message: 'Failed to load categories.' });
-        }
-    });
+// Categories Routes (for inventory dropdown)
+app.get('/api/categories', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM categories ORDER BY id ASC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching categories:', err);
+        res.status(500).json({ message: 'Failed to load categories.' });
+    }
+});
 
-    // Start server
-    app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-    });
+// Start server
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
