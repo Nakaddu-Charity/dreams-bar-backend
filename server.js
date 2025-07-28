@@ -47,6 +47,12 @@ pool.connect((err, client, release) => {
     });
 });
 
+// --- Health Check Endpoint ---
+// This is a simple route that Railway can hit to check if the server is alive.
+app.get('/', (req, res) => {
+    res.status(200).send('Dreams Bar Backend is running!');
+});
+
 // --- API Routes (using PostgreSQL) ---
 
 // Inventory Routes
@@ -159,7 +165,7 @@ app.delete('/api/rooms/:id', async (req, res) => {
         if (result.rows.length > 0) {
             res.status(204).send();
         } else {
-            res.status(404).json({ message: 'Room not found' });
+            res.status(404).json({ message: 'Item not found' });
         }
     } catch (err) {
         console.error('Error deleting room:', err);
@@ -220,11 +226,11 @@ app.post('/api/bookings/rooms', async (req, res) => {
 
 app.put('/api/bookings/rooms/:id', async (req, res) => {
     const { id } = req.params;
-    const { room_id, client_id, check_in_date, check_out_date, total_price, status } = req.body;
+    const { room_number, type, price_per_night, status } = req.body;
     try {
         const result = await pool.query(
-            'UPDATE bookings SET room_id = $1, client_id = $2, check_in_date = $3, check_out_date = $4, total_price = $5, status = $6 WHERE id = $7 RETURNING *',
-            [room_id, client_id, check_in_date, check_out_date, total_price, status, id]
+            'UPDATE bookings SET room_number = $1, type = $2, price_per_night = $3, status = $4 WHERE id = $5 RETURNING *',
+            [room_number, type, price_per_night, status, id]
         );
         if (result.rows.length > 0) {
             res.json(result.rows[0]);
